@@ -53,6 +53,23 @@ node device/ESP32P4/firmware/security-tests/test_browser_setup.mjs
 [HTTPS 与首次配置验证说明](SECURITY_TRANSPORT_zh.md#依赖补丁与验证)。
 单项浏览器测试通过不能代替这些安全测试。
 
+### 主机测试环境排错
+
+在仓库根目录运行测试前，确认测试命令实际选中的 Python、C 编译器和依赖。
+下列失败应保留完整日志，并先修复对应环境；不要通过删除测试或跳过检查来
+取得“整仓通过”的结论。
+
+| 首个失败信息 | 核对方式与处理方向 |
+| --- | --- |
+| `No module named requests` | 使用测试入口的同一个 `PYTHON` 安装本节 requirements；其他虚拟环境中已安装不代表当前解释器可用。 |
+| 找不到 `pkg-config` | 检查它是否已安装且位于当前 `PATH`；仅安装 Python 依赖不能提供这个系统命令。 |
+| `pkg-config` 找不到 OpenSSL | 执行 `pkg-config --cflags --libs openssl` 核对开发头文件、库和包描述是否可发现；仅有 `openssl` 命令行程序不够。 |
+| macOS 链接时报 `libSystem.tbd`、`tapi` 或未知架构 | 记录 `cc --version` 和 `xcrun --show-sdk-path`，核对编译器与所选 SDK 是否兼容。若已安装兼容 SDK，可仅为本次测试命令指定 `SDKROOT` 并记录版本，无需更改仓库源码或全局 SDK 选择。 |
+
+整仓入口会在首个失败处停止。即使前面的 Stable、Dev 主机测试已通过，后续
+安全测试因依赖缺失而停止时，整仓结果仍应记为“未完成”，并分别记录已完成
+阶段和未执行阶段。
+
 `v0.86-stable-kvm` 是独立源码树。不要把 Dev 测试通过记录写成 Stable 已通过，
 也不要由这次 Dev 主机依赖调整推断 Stable 的依赖要求已经相同。
 
