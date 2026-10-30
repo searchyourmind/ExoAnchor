@@ -70,6 +70,33 @@ MCP stdio 消息、GUI 请求、Release 元数据和固件 manifest；本地 man
 各 HTTP 入口保留各自原有的字节限制，解释器自身的语法、整数长度或递归异常仍会转换为
 对应 API 的错误。该策略不依赖某一 Python 版本恰好抛出 `RecursionError`，也不修改全局递归上限。
 
+## 设备 HTTP 失败的定向排查
+
+设备 API 与 Release 下载使用不同的跳转规则，登录总期限也不等同于一次
+HTTP 请求的期限。遇到以下问题时，先按对应分支定位：
+
+| 现象 | 当前客户端行为与对应回归 |
+| --- | --- |
+| 设备 API 返回 301、302、303、307 或 308 | 不跟随跳转，即使目标是同一 origin；不会向跳转地址转发凭据或重放请求。核对显式设备地址及代理配置，见 `tests.test_http_targets`。Release 下载允许受限跳转的结果不能推定到设备 API。 |
+| POST 返回 401 | 不在重新登录后自动重放写请求；先检查设备状态再决定后续操作。GET 可在重新认证后重试一次，见已列入首组命令的 `tests.test_http_transport_failures`。 |
+| 异步登录超时 | 30 秒总预算包含初始提交、轮询和等待；增大单次请求的 `timeout` 不会延长登录总预算。超时后到达的成功响应不能替换原 token，见 `tests.test_http_login_budget`。 |
+| 已收到响应头，但正文停顿或长度不符 | 正文读取仍受本次请求期限和大小限制；持续少量字节不能无限延长期限。声明了 `Content-Length` 的响应若被截断，即使已收到的内容是合法 JSON 也会被拒绝，见 `tests.test_http_response_deadline`。 |
+
+在仓库根目录运行额外的目标地址、登录预算与响应正文回归：
+
+```bash
+(
+  cd toolkit &&
+  .venv/bin/python -m unittest \
+    tests.test_http_targets tests.test_http_login_budget \
+    tests.test_http_response_deadline -v
+)
+```
+
+这组测试使用本地 HTTP 服务或模拟时钟，不需要设备凭据。记录实际使用的
+Python 版本、模块列表和结果；某一个解释器上的通过记录不能替代 3.10、3.11、
+3.12 的逐版本兼容性验证，也不能写成整仓检查通过。
+
 ## 本地固件包校验
 
 准备好 Toolkit 环境后，可在仓库根目录运行下列命令。将示例路径替换成实际
