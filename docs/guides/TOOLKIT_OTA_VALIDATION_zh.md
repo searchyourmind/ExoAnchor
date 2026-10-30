@@ -6,7 +6,7 @@
 
 ## 运行离线回归
 
-在仓库根目录准备 Toolkit 和整仓主机测试依赖：
+以下命令均从仓库根目录开始。先准备 Toolkit 和整仓主机测试依赖：
 
 ```bash
 uv sync --locked --project toolkit --python 3.12
@@ -14,15 +14,24 @@ uv pip install --python toolkit/.venv/bin/python \
   -r device/ESP32P4/firmware/v0.86.6-dev/tests/host/requirements.txt
 ```
 
+环境准备可能需要下载 Python 和依赖；“离线”指依赖就绪后的回归测试，
+不表示首次安装无需网络。仅运行 Toolkit 测试时，完成第一条 `uv sync` 即可；
+第二条安装的是整仓主机测试所需的额外依赖。
+
 仅运行下载、上传和 JSON 边界回归：
 
 ```bash
-cd toolkit
-.venv/bin/python -m unittest \
-  tests.test_ota_workflow tests.test_json_limits \
-  tests.test_firmware tests.test_http_transport_failures \
-  tests.test_gui_transport tests.test_release_transport -v
+(
+  cd toolkit &&
+  .venv/bin/python -m unittest \
+    tests.test_ota_workflow tests.test_json_limits \
+    tests.test_firmware tests.test_http_transport_failures \
+    tests.test_gui_transport tests.test_release_transport -v
+)
 ```
+
+括号使目录切换只在子 shell 内生效，执行完仍停留在仓库根目录；可继续运行
+下面的整仓命令，不会误把解释器路径拼成 `toolkit/toolkit/.venv/bin/python`。
 
 整仓检查从仓库根目录运行；所需 C 编译器、Node.js、OpenSSL 和 `pkg-config`
 见[固件验证规程](FIRMWARE_VALIDATION_zh.md)及[传输验证说明](SECURITY_TRANSPORT_zh.md)：
