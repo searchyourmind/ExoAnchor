@@ -52,7 +52,7 @@ TLS 连接，检查 Toolkit、MCP 和诊断客户端只向通过证书校验的�
 
 | 路径 | 核对结果 |
 | --- | --- |
-| Release → ZIP → manifest → OTA | 下载器校验归档与各 segment 的 SHA-256，完整上传的字节与合成镜像一致；三轮上传均独立完成；再次下载复用经过复验的缓存。 |
+| Release → ZIP → manifest → OTA | 下载器计算归档 SHA-256，仅在 Release asset 提供 digest 时与其比较；各 segment 始终按 manifest 核对长度与 SHA-256。完整上传的字节与合成镜像一致；三轮上传均独立完成；再次下载复用经过复验的缓存。 |
 | 归档或 segment 损坏 | 返回明确错误，临时下载被清理，不发布可用缓存，也不开始 OTA。 |
 | 校验后文件变化 | 在任何设备请求前，重新核对实际上传字节的长度与 SHA-256；文件增长、截断或等长修改均停止。 |
 | 部分写入或整块响应丢失 | 通过真实 socket 断连模拟；先查询状态，只从同一 session、大小、摘要对应的已确认 offset 继续，不能盲目重发原块。 |
@@ -69,6 +69,29 @@ MCP stdio 消息、GUI 请求、Release 元数据和固件 manifest；本地 man
 函数处理的构建 JSON 文件最多 1 MiB。
 各 HTTP 入口保留各自原有的字节限制，解释器自身的语法、整数长度或递归异常仍会转换为
 对应 API 的错误。该策略不依赖某一 Python 版本恰好抛出 `RecursionError`，也不修改全局递归上限。
+
+## 本地固件包校验
+
+准备好 Toolkit 环境后，可在仓库根目录运行下列命令。将示例路径替换成实际
+下载或构建得到的包；三种输入任选一种，无需全部执行：
+
+```bash
+toolkit/.venv/bin/exoanchor-toolkit firmware verify ./firmware-package
+toolkit/.venv/bin/exoanchor-toolkit firmware verify ./firmware-package/exoanchor-firmware.json
+toolkit/.venv/bin/exoanchor-toolkit firmware verify ./firmware-package.zip --json
+```
+
+`package` 是位置参数，支持包目录、manifest 文件或 ZIP；不使用 `--manifest`。
+目录中的 manifest 必须名为 `exoanchor-firmware.json`，ZIP 中必须恰有一个该文件。
+这些命令只读取本地包，ZIP 会解压到临时目录；不发现、登录、烧录或重启设备。
+
+普通输出中的 `Verification: PASS` 表示包校验成功；`--json` 输出包信息而不打印
+该文字，应同时记录退出码。JSON 包含版本、板型和各 segment 的长度、SHA-256。
+ZIP 输出中的 `manifest` 是临时解压路径，命令结束后即被清理；复现时应保留
+原 ZIP 路径和文件本身，不能把临时路径当成下次校验的输入。
+
+本地 `verify` 核对文件与包内 manifest 的一致性，不验证发布者的数字签名，
+也不证明镜像与已连接的实物匹配。校验成功不能代替可信来源确认或真机启动验证。
 
 ## 中断后的排查顺序
 
