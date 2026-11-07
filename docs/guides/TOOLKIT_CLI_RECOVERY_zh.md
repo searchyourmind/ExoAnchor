@@ -73,3 +73,63 @@ UART 实际写入后还会等待同一设备重新枚举，并核对其运行中
 - `--yes` 只跳过交互确认，不能跳过包校验、板型或身份检查。
 
 真机烧录前的身份确认与验收条件见 [固件修改验证规程](FIRMWARE_VALIDATION_zh.md)。
+
+## 网络配置的确认和恢复
+
+`network configure` 执行“读取原身份 → 暂存 → apply → 验证 → commit → 再读取”的流程。
+下面的示例会实际修改设备网络；确认目标和预期配置后才运行：
+
+```sh
+toolkit/.venv/bin/exoanchor-toolkit network configure \
+  --transport network --device https://192.0.2.10 \
+  --mode dhcp --verify-timeout 20 --json
+```
+
+静态模式改用 `--mode static --address 192.0.2.20 --netmask 255.255.255.0`，
+并按实际网络填写可选的 gateway 和 DNS。DHCP 重新发现可添加
+`--discovery-subnet 192.0.2.0/24`；这些地址均为文档示例，不能直接代入真实网络。
+
+确认保存前，客户端要求设备报告与修改前相同的 `device_id`、已连接状态和待确认状态；
+静态模式还必须报告指定 IP，并等地址冲突检查离开中间状态。
+HTTP 静态模式通过新 IP 验证，DHCP 模式检查原地址并尝试重新发现同一 `device_id`。
+验证窗口 `--verify-timeout` 默认 20 秒，允许 0.1–110 秒；它不修改固件的 120 秒待确认回滚计时器，
+也不是整个 CLI 调用的严格总耗时上限。
+
+手动 `network dhcp/static/hostname --apply --commit` 会在 apply 后直接请求 commit，
+不会执行 `network configure` 的重新发现和就绪检查。`--commit` 必须与 `--apply` 一起使用。
+
+| 失败阶段 | 后续操作 |
+| --- | --- |
+| 缺少 `device_id` 或参数校验失败 | 确认身份与输入；不会进入 apply。 |
+| apply 后验证窗口内没有获得可确认的状态 | 客户端不调用 commit，交给设备的待确认回滚机制；先等待并检查原地址或重新发现设备。CLI 已退出不等于设备已完成恢复。 |
+| commit 响应或 commit 后的最终读取失败 | 配置可能已保存，不能套用“尚未 commit”的结论；重新读取设备配置，确认结果后再操作。 |
+
+恢复后，可用 `network show` 检查实际运行配置和设备身份；仍无法通过网络访问时，
+通过已确认的诊断 UART0 读取：
+
+```sh
+toolkit/.venv/bin/exoanchor-toolkit network show --transport uart \
+  --port /dev/EXAMPLE_UART --json
+```
+
+`network rollback` 请求恢复 last-good 配置；`network reset --yes` 恢复出厂 DHCP，二者含义不同。
+读取状态和确认目标前，不把 reset 当作自动重试步骤。
+
+## 本机可复现的检查范围
+
+准备好 Toolkit 环境后，从仓库根目录运行以下既有测试：
+
+```sh
+(
+  cd toolkit &&
+  .venv/bin/python -m unittest \
+    tests.test_cli tests.test_network_configure tests.test_uart_recovery -v
+)
+```
+
+这些测试使用模拟设备和时钟，验证参数解析、配置确认顺序、失败时不 commit、
+串口重新枚举后的同设备匹配及版本检查；不执行真实设备网络变更或烧录。
+记录测试所用的源码版本、Python 版本、模块和结果；真机连通、回滚时间及启动结果需另外验证。
+实现可对照 [CLI](../../toolkit/exoanchor_toolkit/cli.py)、
+[网络配置流程](../../toolkit/exoanchor_toolkit/network_configure.py)和
+[UART 运行确认](../../toolkit/exoanchor_toolkit/uart_recovery.py)。

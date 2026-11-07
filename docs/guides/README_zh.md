@@ -31,3 +31,4 @@
 - [两步验证与动态验证码](TWO_STEP_zh.md)
 - [通行密钥与 Apple Passkey](PASSKEY_zh.md)
 - [Toolkit 网络 OTA 验证](TOOLKIT_OTA_VALIDATION_zh.md)
+- [Toolkit CLI 参数、预演与网络配置恢复](TOOLKIT_CLI_RECOVERY_zh.md)
