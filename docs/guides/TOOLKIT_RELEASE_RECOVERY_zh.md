@@ -45,3 +45,40 @@ toolkit/.venv/bin/exoanchor-toolkit firmware latest \
 `package.manifest`、`directory`、`cached` 和 `archive_sha256`，同时记录 Toolkit 源码版本及命令。
 包的 SHA-256 检查证明文件与所检查摘要一致，不是发布者数字签名验证；
 `Verification: PASS` 也不证明目标板型匹配、烧录成功或新固件已启动。
+
+## 区分缓存复验与离线使用
+
+`download` 和 `latest` 每次都先在线查询 Release 元数据，再检查本地缓存。
+缓存命中只省略 asset 的 ZIP 下载；这两个命令没有离线开关。
+若 GitHub 查询失败，即使包目录还在，下载命令也可能无法完成。
+
+`--output` 指定的是父目录，实际包保存在自动命名的子目录中：asset 文件名去掉 `.zip`，
+再附加元数据中 SHA-256 十六进制摘要的前 12 位；没有 digest 时使用 asset ID。
+以 JSON 的 `directory` 或文本的 `Package:` 路径为准，不自行拼接版本目录。
+未指定 `--output` 时使用用户缓存目录，macOS 上是
+`~/Library/Caches/exoanchor-toolkit/firmware`。成功下载保留解包目录，临时原始 ZIP 会被清理。
+
+| 下载结果 | 实际执行的检查 | `archive_sha256` 的含义 |
+| --- | --- | --- |
+| `cached: false` | 检查下载大小，计算 ZIP 摘要；元数据提供 digest 时还会比对；解包后校验 manifest、segment 长度/摘要及包版本。 | 本次下载 ZIP 的计算值。 |
+| `cached: true` | 重新读取缓存 manifest，校验 segment 长度/摘要，并核对包版本与 tag 对应版本。 | 来自当前元数据 digest；未提供 digest 时为空字符串。不是重新计算原 ZIP 的结果。 |
+
+已有缓存损坏、manifest 数量不正确、目标为符号链接或包版本不匹配时，客户端会报错，
+不会自动删除、覆盖或重新下载该目录。先保留错误信息和目录用于排查；需要重新下载时，
+可指定一个新的父目录，下载成功后再决定如何处理旧缓存：
+
+```sh
+toolkit/.venv/bin/exoanchor-toolkit firmware download RELEASE_TAG \
+  --repository wxffxx/ExoAnchor --output ./firmware-recovery-downloads --json
+```
+
+准备好 Python 依赖后，使用已有本地目录、manifest 或 ZIP 的 `inspect` / `verify`
+不查询 GitHub。下面的路径应替换为成功下载 JSON 结果中的 `package.manifest`；
+ZIP 可能将 manifest 放在嵌套子目录中，此时不能直接把最外层 `directory` 作为包目录：
+
+```sh
+toolkit/.venv/bin/exoanchor-toolkit firmware verify \
+  /PATH/TO/exoanchor-firmware.json --json
+```
+
+这一步可离线检查本地包，但不能替代设备连接、身份核对或更新后的启动确认。
