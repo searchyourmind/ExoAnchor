@@ -32,3 +32,4 @@
 - [通行密钥与 Apple Passkey](PASSKEY_zh.md)
 - [Toolkit 网络 OTA 验证](TOOLKIT_OTA_VALIDATION_zh.md)
 - [Toolkit CLI 参数、预演与网络配置恢复](TOOLKIT_CLI_RECOVERY_zh.md)
+- [Toolkit Release 选择、缓存与 OTA 故障恢复](TOOLKIT_RELEASE_RECOVERY_zh.md)

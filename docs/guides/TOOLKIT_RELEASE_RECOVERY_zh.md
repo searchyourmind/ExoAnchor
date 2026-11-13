@@ -82,3 +82,58 @@ toolkit/.venv/bin/exoanchor-toolkit firmware verify \
 ```
 
 这一步可离线检查本地包，但不能替代设备连接、身份核对或更新后的启动确认。
+
+## 按 OTA 失败阶段决定下一步
+
+本节只适用于 `firmware flash --transport network`。保留本次使用的包、目标信息和完整日志；
+恢复前重新执行本地 `firmware verify`，按 [OTA 验证规程](TOOLKIT_OTA_VALIDATION_zh.md)
+核对设备身份与 `/api/ota/upload/status`，再判断是否存在匹配的活动会话。
+下表描述当前客户端行为；操作者仍需根据设备实际状态决定后续操作。
+
+| 阶段 | 客户端行为 | 恢复时的判断 |
+| --- | --- | --- |
+| 初始状态检查 | 读取 capability 和上传状态；活动会话须有匹配的镜像大小/摘要、有效 session ID 和范围内 offset，才会续传。 | 不匹配时停止，确认现有上传用途；客户端不会自动取消其他会话。 |
+| `start` 请求失败或响应不合法 | 当前调用停止，不自动重发或查询状态恢复。 | 设备可能已经创建会话。先核对状态；之后同一包的新 `flash` 调用会检查活动会话，匹配时才续传。 |
+| `chunk` 的 `post_binary` 调用抛出 `ToolkitError`（例如 HTTP、读取或 JSON 解析错误） | 查询一次 status；同一会话的 offset 确认前进且未超过本块结尾时，从确认位置继续。 | 无进展、状态查询失败或会话变化都会停止，不无限重试。 |
+| `chunk` 已返回 JSON 对象，但 `ok` / `offset` 校验失败 | 停止，不进入上一行的自动 status 恢复流程。 | 不能把所有 chunk 错误都当作自动续传；先检查同一包的活动会话及 offset。 |
+| `finish` 失败、响应丢失或 digest 不符 | 停止，不请求 reboot，也不自动重发 finish。 | 设备可能已经处理 finish；先查状态，不把响应失败当成安装一定未发生。 |
+| `reboot` 拒绝或响应丢失 | 报错，不自动重发 reboot。 | 镜像可能已完成安装。检查设备可达性、是否重启及实际运行版本，再决定后续操作。 |
+
+再次执行 `flash` 不是无条件续传：若设备报告没有活动会话，客户端会开始新上传。
+重复已经完成的更新也可能再次上传，不能把整条命令当作幂等重试，尤其是 finish/reboot 结果不明时。
+
+当前 CLI 没有 `firmware status`、`firmware resume` 或 `firmware abort` 子命令。
+`network show` 查询网络配置，不查询 OTA 状态。不要把不存在的命令加入恢复脚本；
+应通过已授权的设备界面或 API 工具检查 OTA 状态。
+
+CLI 在 `update()` 整体返回后才打印上传成功信息。如果 reboot 阶段报错，
+即使 finish 已成功，终端也可能没有 “OTA image uploaded” 或 “SHA-256 verified” 字样。
+缺少这些文字不能证明设备未接收镜像。
+`--no-reboot` 表示需要另行重启激活；“Device reboot requested”只说明请求被确认，
+二者都不等于新镜像已成功启动。
+
+## 检查依据与验证范围
+
+Release 选择、缓存和本地包行为可对照
+[releases.py](../../toolkit/exoanchor_toolkit/releases.py)；
+OTA 各阶段和命令输出分别见
+[http_device.py](../../toolkit/exoanchor_toolkit/http_device.py)与
+[cli.py](../../toolkit/exoanchor_toolkit/cli.py)。
+
+准备好 Toolkit 环境后，从仓库根目录运行相关既有测试：
+
+```sh
+(
+  cd toolkit &&
+  .venv/bin/python -m unittest \
+    tests.test_releases tests.test_release_transport \
+    tests.test_ota_workflow tests.test_http_transport_failures -v
+)
+```
+
+这些测试使用合成包、替换后的传输或本地 HTTP 服务，覆盖 Release 选择、下载与缓存复验、
+chunk 响应丢失恢复、非法响应拒绝及 finish/reboot 拒绝等行为；不访问真实 GitHub Release，
+也不执行物理设备烧录。第一页查询限制、坏缓存不自动替换、成功信息延后输出，
+以及 start/finish/reboot 响应丢失时不自动重放的说明来自实现检查，
+不能写成这些场景均已有专门回归测试。真机启动与恢复结果需按
+[固件验证规程](FIRMWARE_VALIDATION_zh.md)另外记录。
