@@ -69,3 +69,51 @@ OTA 各阶段的判断见 [Release 与恢复指南](TOOLKIT_RELEASE_RECOVERY_zh.
 `network show --timeout` 默认 5 秒，控制单次设备 HTTP 请求预算，须为有限正数。
 登录的初始提交、等待和状态轮询另共享 30 秒预算，每次登录请求使用普通超时与剩余登录预算中的较小值。
 因此增大 `--timeout` 不会延长 30 秒登录预算；一条 CLI 命令还可能包含多个请求，不能把该参数当作整个命令的总时限。
+
+## 根据错误定位问题
+
+| 现象 | 先检查什么 |
+| --- | --- |
+| 缺少证书文件、非 ASCII 或 PEM 格式错误 | 核对本地文件路径和单张公开证书格式。这类错误在构造客户端时即可发生，未必包装成统一的 CLI 错误或退出码。 |
+| `cannot reach ExoAnchor ...` 中含证书验证或配对错误 | 查看底层 TLS 原因、证书有效期和本机时间，并确认目标与已保存证书的对应关系；不能直接认定为断网。证书变化时先核实设备身份，再重新配对，不自动接受新证书。 |
+| `device authentication required` | 核对实际账号、密码和所需第二因素；仅凭这条提示不能断定密码错误。 |
+| `device session expired; enter a new two-step verification code` | 提供新的可用验证码或未使用的恢复码，并检查 shell 中是否仍留着旧值。 |
+| `device login timed out` | 登录共享预算已经用尽；与普通响应超时区分，先检查设备登录是否正常完成。 |
+| `device response deadline exceeded` | 某次响应未在读取预算内完成；检查设备响应和连接情况，不当作已经完成的操作结果。 |
+| 设备返回 HTTP 3xx | 核对实际地址、端口和固件接口；客户端不会跟随设备重定向。 |
+
+保留 Toolkit 源码版本、Python 版本、命令的非敏感参数和完整错误类型。
+不要用切换到明文 HTTP 或关闭证书校验来掩盖配对错误；旧固件的显式兼容模式见 HTTPS 指南。
+
+## 本机验证范围
+
+首次准备环境可能需要联网下载依赖；以下测试本身使用模拟 transport、时钟或回环服务。
+从仓库根目录准备独立环境并运行相关既有测试：
+
+```sh
+uv sync --locked --project toolkit --python 3.12
+uv pip install --python toolkit/.venv/bin/python \
+  -r device/ESP32P4/firmware/v0.86.6-dev/tests/host/requirements.txt
+(
+  cd toolkit &&
+  .venv/bin/python -m unittest \
+    tests.test_cli tests.test_http_device tests.test_http_targets \
+    tests.test_http_transport_failures tests.test_http_login_budget \
+    tests.test_http_response_deadline -v
+)
+toolkit/.venv/bin/python \
+  device/ESP32P4/firmware/security-tests/test_tls_clients.py
+```
+
+Toolkit 模块检查参数、一次性输入清理、GET/POST 的重试边界、请求目标和超时预算。
+TLS 脚本还需要本机 `openssl`，并导入主机测试依赖中的 `requests`。
+它生成合成证书，在 `127.0.0.1` 建立真实 TLS 连接，检查正确配对可用，
+以及未信任或其他证书被拒绝时服务端收不到测试 bearer。
+WSS 部分只检查拒绝身份时不发送升级 cookie，不验证成功的视频连接。
+
+这些结果不证明真实设备已配对、DHCP 实际换址成功、证书续期恢复完成或硬件登录可用。
+环境变量差异、完整叶证书摘要及本地证书错误行为还需对照实现，不能把所有说明都算成已有专门测试。
+实现入口：[CLI](../../toolkit/exoanchor_toolkit/cli.py)、
+[HTTP 客户端](../../toolkit/exoanchor_toolkit/http_device.py)、
+[TLS 配对](../../toolkit/exoanchor_toolkit/tls_transport.py)；
+真机验证遵循[固件验证规程](FIRMWARE_VALIDATION_zh.md)。
