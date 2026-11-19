@@ -15,8 +15,13 @@ Dev 和 Stable 的管理入口使用 HTTPS 443；独立视频入口使用 HTTPS/
 
 ```sh
 export EXOANCHOR_TLS_CERTIFICATE_FILE="$PWD/exoanchor-device.pem"
-export EXOANCHOR_BASE_URL='https://<设备地址>'
 ```
+
+上述证书变量适用于 MCP 和 Toolkit。设备地址则分别设置：MCP 使用
+`EXOANCHOR_BASE_URL='https://<设备地址>'`；Toolkit CLI 不读取这个变量，
+必须传入 `--transport network --device https://<设备地址>`。
+Toolkit 的完整读取示例、证书检查和认证错误排查见
+[Toolkit HTTPS 连接与认证排查](TOOLKIT_HTTPS_AUTH_zh.md)。
 
 未设置证书文件时，客户端使用系统 CA 和 hostname 校验。Toolkit 的裸 IPv4 地址默认解析为 HTTPS 443；GUI 中的本地回环 HTTP 服务仅提供本机界面。首次信任自签名设备不等于已有公共 CA 或硬件出厂身份认证。
 
